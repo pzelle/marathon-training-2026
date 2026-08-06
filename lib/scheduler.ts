@@ -832,6 +832,9 @@ function placeLifts(days: ScheduleDay[], pending: Pending[], today: string): voi
       days.find((d) => d.date >= today && d.actual?.type === "easy" && !d.actual.lift && clears(d));
     if (!target?.actual) continue;
     target.actual = { ...target.actual, lift: p.session.lift };
+    // Record the origin so the week reads as adjusted rather than "as written" —
+    // a relocated lift is a change to the plan even though no run moved.
+    target.makeupFrom ??= p.origin;
     target.reasons.push({
       rule: "MAKEUP_PLACED",
       detail: `Lift ${p.session.lift} picked up from ${dowShort(p.origin)}.`,

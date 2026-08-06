@@ -293,6 +293,14 @@ describe("makeups for missed hard sessions", () => {
     expect(friday.actual?.lift).toBe("A");
     expect(friday.reasons.some((r) => r.rule === "MAKEUP_PLACED")).toBe(true);
   });
+
+  it("reports the week as adjusted when only a lift moved", () => {
+    // No run changes place — but Monday's Lift A did, so the board must not
+    // claim the week is running as written.
+    const missedLift = schedule({ today: WED, activities: [run(TUE, 7)] });
+    expect(missedLift.days.every((d) => !d.movedFrom && !d.movedTo)).toBe(true);
+    expect(missedLift.adjusted).toBe(true);
+  });
 });
 
 describe("the plan's own guardrails hold under rearrangement", () => {
