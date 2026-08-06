@@ -56,8 +56,9 @@ npm install
 
 Refresh tokens don't expire, so this is a one-time thing.
 
-1. Create an application at <https://www.strava.com/settings/api>.
-2. Set **Authorization Callback Domain** to exactly `localhost`.
+1. Create an application at <https://www.strava.com/settings/api>, or reuse the one you have —
+   Strava allows only **one API application per account**.
+2. Set **Authorization Callback Domain** to exactly `localhost` (no scheme, no port).
 3. Put the client ID and secret in `.env.local` (see [`.env.example`](.env.example)).
 4. Authorize:
 
@@ -68,7 +69,18 @@ Refresh tokens don't expire, so this is a one-time thing.
    Open the URL it prints, click Authorize, and it writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
 
 The `activity:read_all` scope is requested deliberately — without it private activities are
-invisible, and an invisible long run looks like a missed one.
+invisible, and an invisible long run looks like a missed one. Ignore the access token and refresh
+token shown on Strava's settings page; those carry `read` only and can't see your activities.
+
+**Reusing an app that already powers something else.** The callback domain is checked only during
+the authorize redirect, so you can switch it to `localhost`, run the script, and switch it back —
+the refresh token survives. Scopes are the real hazard: re-authorizing *replaces* the scope set
+granted to that app for your account, so include anything the other integration needs.
+
+```bash
+STRAVA_SCOPE=activity:read_all,profile:read_all,activity:write npm run strava-auth
+STRAVA_AUTH_PORT=8722 npm run strava-auth   # if 8721 is taken
+```
 
 ### Run it
 

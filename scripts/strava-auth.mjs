@@ -15,14 +15,27 @@
  *
  * Scope note: `activity:read_all` is requested because the board needs to see
  * activities marked private — otherwise a private long run reads as a missed one.
+ *
+ * Strava allows only one API application per account, so you may be reusing an
+ * app that already powers something else. Two knobs for that case:
+ *
+ *   STRAVA_SCOPE=activity:read_all,profile:read_all,activity:write
+ *       Re-authorizing REPLACES the scope set granted to this app for your
+ *       account. If the other integration needs a scope, include it here or it
+ *       loses access.
+ *
+ *   STRAVA_AUTH_PORT=8721
+ *       The loopback port. Only matters if 8721 is taken.
+ *
+ * The callback domain is checked only during the authorize redirect, never
+ * again — so if your app is registered to another domain you can switch it to
+ * `localhost`, run this, and switch it back. The refresh token survives.
  */
 
 import { createServer } from "node:http";
 import { readFileSync, existsSync, appendFileSync } from "node:fs";
 
-const PORT = 8721;
-const REDIRECT = `http://localhost:${PORT}/callback`;
-const SCOPE = "activity:read_all,profile:read_all";
+const DEFAULT_SCOPE = "activity:read_all,profile:read_all";
 
 /* Pull credentials from the environment, falling back to .env.local. */
 function loadEnv() {
@@ -39,13 +52,18 @@ function loadEnv() {
 const env = loadEnv();
 const clientId = env.STRAVA_CLIENT_ID;
 const clientSecret = env.STRAVA_CLIENT_SECRET;
+const SCOPE = env.STRAVA_SCOPE || DEFAULT_SCOPE;
+const PORT = Number(env.STRAVA_AUTH_PORT) || 8721;
+const REDIRECT = `http://localhost:${PORT}/callback`;
 
 if (!clientId || !clientSecret) {
   console.error(`
 Missing credentials.
 
-  1. Go to https://www.strava.com/settings/api and create an application.
+  1. Go to https://www.strava.com/settings/api — create an application, or reuse
+     the one you have (Strava allows only one per account).
   2. Set "Authorization Callback Domain" to exactly:  localhost
+     You can set it back afterward; it's only checked during the redirect.
   3. Put the client ID and secret in .env.local:
 
        STRAVA_CLIENT_ID=12345
@@ -155,6 +173,17 @@ Next:
 
   server.close();
   process.exit(0);
+});
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `\nPort ${PORT} is already in use. Pick another:\n\n  STRAVA_AUTH_PORT=8722 npm run strava-auth\n`,
+    );
+  } else {
+    console.error(`\n${err.message}\n`);
+  }
+  process.exit(1);
 });
 
 server.listen(PORT);
