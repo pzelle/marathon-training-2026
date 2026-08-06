@@ -41,9 +41,13 @@ const DEFAULT_SCOPE = "activity:read_all,profile:read_all";
 function loadEnv() {
   const env = { ...process.env };
   if (existsSync(".env.local")) {
-    for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-      if (m && !env[m[1]]) env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+      if (!m || env[m[1]]) continue;
+      // Trim before stripping quotes: a stray trailing space or CR would
+      // otherwise ride along into the credential and Strava just says
+      // "client_id invalid" without telling you why.
+      env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "").trim();
     }
   }
   return env;
@@ -70,6 +74,33 @@ Missing credentials.
        STRAVA_CLIENT_SECRET=abc...
 
   4. Run this again.
+`);
+  process.exit(1);
+}
+
+/*
+ * Validate locally rather than letting Strava answer with
+ * {"field":"client_id","code":"invalid"}, which is the same message for a typo,
+ * a placeholder, and a genuinely unknown application.
+ */
+if (/[<>]/.test(clientId) || /[<>]/.test(clientSecret)) {
+  console.error(`
+The placeholder text is still in .env.local — the values weren't substituted.
+
+  STRAVA_CLIENT_ID=${clientId}
+
+Replace both with the real values from https://www.strava.com/settings/api :
+the numeric "Client ID", and the "Client Secret" behind the Show link.
+`);
+  process.exit(1);
+}
+
+if (!/^\d+$/.test(clientId)) {
+  console.error(`
+STRAVA_CLIENT_ID must be all digits, but it's "${clientId}".
+
+That's the numeric "Client ID" on https://www.strava.com/settings/api — not the
+client secret, not the access token, and not your athlete ID.
 `);
   process.exit(1);
 }
