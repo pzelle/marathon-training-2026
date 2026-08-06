@@ -1,36 +1,126 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Marathon HQ — NYC 2026
 
-## Getting Started
+A race-day operations board for a 16-week marathon build (Mon Jul 13 → Sun Nov 1, 2026).
+It reads what actually happened from Strava, reads the hourly forecast from Open-Meteo, and
+decides where the rest of the week's sessions should go.
 
-First, run the development server:
+The scheduling is **deterministic**. Same inputs, same board, every time — and every change it
+makes cites the rule that caused it.
+
+## The scheduler
+
+The interesting part is [`lib/scheduler.ts`](lib/scheduler.ts). It replaced a language-model
+call that used to decide when to move runs. Same job, but the decisions are now testable and
+the reasoning is a citation rather than a paragraph.
+
+It runs in five passes:
+
+1. **Settle the past.** Each elapsed day resolves to complete, short, missed, or dropped.
+   Missed easy runs are *dropped* — the plan's rule is skip, don't cram. Missed quality and
+   long runs become makeups looking for a home.
+2. **Score.** Every remaining day is scored against every session still needing a day, using
+   the heat protocol plus the plan's own scheduling constraints.
+3. **Search.** Assignments of sessions to days are enumerated exhaustively (the space is at most
+   a few thousand arrangements) and the cheapest wins. Greedy placement gets Sat/Sun long-run
+   swaps wrong when the quality day also wants to move, so it isn't used.
+4. **Hold still unless it's worth it.** The winner is only adopted if it beats leaving the plan
+   alone by a real margin, so the board doesn't reshuffle when a dew point wobbles a degree.
+5. **Place lifts** around the result, honoring 48-hour clearance before the long run.
+
+### What it optimizes against
+
+Costs are ordinal — what matters is the ranking. A protocol block outranks a treadmill, a
+treadmill outranks moving a day, and moving a day outranks a couple of degrees of dew point.
+
+| Constraint | Source |
+|---|---|
+| No outdoor quality or long runs at dew point 75+ | heat protocol |
+| No outdoor speed work above an 85° heat index | heat protocol |
+| Long runs cap at 14 miles in the 70–74 dew point band | heat protocol |
+| Long run floats freely between Sat and Sun | plan — the move is *free*, not merely cheap |
+| Lift A (heavy legs) stays 48h clear of the long run | plan |
+| No two hard days back to back | plan |
+| Rest and lift-only days are recovery, not spare capacity | plan |
+| Treadmill substitution stops being honest past 12 miles | judgment; longer runs split or slide |
+
+Start windows are chosen by a thermal-load score weighting dew point most heavily — it's what
+limits evaporative cooling — plus a solar term, so a hot 8 AM never outranks a muggy 5:30.
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Strava
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Refresh tokens don't expire, so this is a one-time thing.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create an application at <https://www.strava.com/settings/api>.
+2. Set **Authorization Callback Domain** to exactly `localhost`.
+3. Put the client ID and secret in `.env.local` (see [`.env.example`](.env.example)).
+4. Authorize:
 
-## Learn More
+   ```bash
+   npm run strava-auth
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+   Open the URL it prints, click Authorize, and it writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The `activity:read_all` scope is requested deliberately — without it private activities are
+invisible, and an invisible long run looks like a missed one.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Run it
 
-## Deploy on Vercel
+```bash
+npm run dev     # http://localhost:3000
+npm test        # the scheduler and the heat protocol
+npm run build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The forecast needs no key, so the board renders with weather alone if Strava isn't configured.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Deploy
+
+```bash
+vercel
+vercel env add STRAVA_CLIENT_ID production
+vercel env add STRAVA_CLIENT_SECRET production
+vercel env add STRAVA_REFRESH_TOKEN production
+vercel --prod
+```
+
+## How it holds up when things break
+
+- **Strava down** → elapsed days read `unknown`, not `missed`. An empty activity list from a
+  failed request is absence of evidence, and the board says so rather than inventing a week of
+  missed workouts and makeups to match.
+- **Forecast down** → the plan renders as written; heat calls and day swaps are skipped rather
+  than guessed.
+- **Strava rotates the refresh token** → surfaced as a banner telling you to update the env var.
+  There's no datastore here to persist a new one, so it can't be papered over silently.
+
+## Notes on the plan data
+
+The plan document's stated weekly targets run 4–6 miles *below* what its own day-by-day sessions
+add up to, in 9 of 16 weeks (W3: sessions total 36, stated target 30). The board measures
+progress against the session total — the honest denominator — and shows the document's target
+underneath as a secondary label.
+
+## Layout
+
+```
+lib/
+  plan.ts        the 16 weeks, as structured sessions rather than display strings
+  heat.ts        the rhabdo protocol — the only place medical guardrails live
+  scheduler.ts   the engine
+  strava.ts      single-athlete API client, server-side only
+  weather.ts     Open-Meteo
+  dates.ts       calendar-day arithmetic pinned to America/New_York
+app/             one server-rendered page
+components/      the board
+```
+
+Dates are the sharp edge here: Vercel runs UTC, the athlete runs in Brooklyn, and "today" has to
+mean Brooklyn's today or the board flips over five hours early every evening. Every day key is a
+local `YYYY-MM-DD`, parsed at noon UTC so no offset or DST shift can move it across a boundary.

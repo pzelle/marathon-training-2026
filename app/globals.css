@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Race-day operations board: marathon blue, bib orange, condensed display type,
+ * mile-marker signage language. Deliberately light-only — this board gets read
+ * on a phone at 5:40 AM in a bright kitchen, and the palette is the plan's.
+ */
+@theme {
+  --color-bg: #f6f4ee;
+  --color-surface: #ffffff;
+  --color-ink: #14213d;
+  --color-muted: #5c6784;
+  --color-line: #d8d4c8;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-blue: #1d4e89;
+  --color-orange: #e8590c;
+  --color-green: #2f7d4f;
+  --color-red: #c1361b;
+  --color-amber: #b07c10;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-sky: #eaf1f8;
+  --color-peach: #fdede2;
+  --color-mint: #e9f3eb;
+  --color-sand: #efede6;
+  --color-butter: #fbf3d5;
+  --color-bib: #ffb25e;
+
+  --font-display: "Arial Narrow", "Helvetica Neue", Futura, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Signage type: condensed, uppercase, tight. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+/* The small monospaced labels that run the board. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
